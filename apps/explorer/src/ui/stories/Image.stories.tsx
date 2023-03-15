@@ -46,11 +46,11 @@ export const FallbackImage: StoryObj<ImageProps> = {
     },
 };
 
-export const Blurred: StoryObj<ImageProps> = {
+export const Moderated: StoryObj<ImageProps> = {
     args: {
-        blur: true,
-        src: 'https://images.unsplash.com/photo-1439130490301-25e322d88054?auto=format&fit=crop&w=1632&q=80',
+        src: 'https://upload.wikimedia.org/wikipedia/commons/4/4f/SIG_Pro_by_Augustas_Didzgalvis.jpg',
         size: 'lg',
         rounded: 'lg',
+        blur: true,
     },
 };

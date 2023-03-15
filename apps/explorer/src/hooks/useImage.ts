@@ -1,6 +1,6 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useLayoutEffect, useRef, useState } from 'react';
 
 import { useImageMod } from './useImageMod';
 
@@ -11,25 +11,40 @@ interface UseImageProps {
     moderate?: boolean;
 }
 
-export function useImage({ src, moderate = false }: UseImageProps) {
+export function useImage({ src, moderate = true }: UseImageProps) {
     const [status, setStatus] = useState<Status>('loading');
-    const formatted = src.replace(/^ipfs:\/\//, 'https://ipfs.io/ipfs/');
-    const { data: allowed, isFetched } = useImageMod({ url: formatted });
-    const ref = useRef<HTMLImageElement | null>(null);
-
-    useEffect(() => {
-        const img = new globalThis.Image();
-        ref.current = img;
-        img.src = src;
-        img.onload = () => !moderate && setStatus('loaded');
-        img.onerror = () => setStatus('failed');
+    const formatted = src?.replace(/^ipfs:\/\//, 'https://ipfs.io/ipfs/');
+    const { data: allowed, isFetched } = useImageMod({
+        url: formatted,
     });
 
-    useEffect(() => {
-        if (moderate && isFetched) setStatus('loaded');
-    }, [moderate, isFetched]);
+    const ref = useRef<HTMLImageElement | null>(null);
 
-    return { url: formatted, nsfw: moderate && !allowed, status };
+    const cleanup = () => {
+        if (ref.current) {
+            ref.current.onload = null;
+            ref.current.onerror = null;
+            ref.current = null;
+        }
+    };
+
+    const load = useCallback(() => {
+        if (!src) setStatus('failed');
+        const img = new Image();
+        img.src = formatted;
+
+        img.onload = () =>
+            (!moderate || (moderate && isFetched)) && setStatus('loaded');
+        img.onerror = () => setStatus('failed');
+        ref.current = img;
+    }, [src, formatted, moderate, isFetched]);
+
+    useLayoutEffect(() => {
+        load();
+        return () => cleanup();
+    }, [moderate, isFetched, load, status, allowed]);
+
+    return { nsfw: !allowed, url: formatted, status, ref };
 }
 
 export default useImage;

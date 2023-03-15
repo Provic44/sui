@@ -25,6 +25,7 @@ export function useGetOwnedObjects(address?: SuiAddress | null) {
         {
             staleTime: 10 * 60 * 1000,
             enabled: !!address,
+            keepPreviousData: true,
             getNextPageParam: (lastPage) =>
                 lastPage?.hasNextPage
                     ? {
