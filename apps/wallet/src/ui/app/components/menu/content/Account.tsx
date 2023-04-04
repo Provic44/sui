@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 import { Disclosure, Transition } from '@headlessui/react';
-import { useAddressToSuiNS } from '@mysten/core';
+import { useResolveSuiNSName } from '@mysten/core';
 import { ChevronDown16, Copy16 } from '@mysten/icons';
 import { formatAddress } from '@mysten/sui.js';
 import { cx } from 'class-variance-authority';
@@ -22,7 +22,7 @@ export function Account({ account }: AccountProps) {
     const copyCallback = useCopyToClipboard(address, {
         copySuccessMessage: 'Address copied',
     });
-    const { data: suins } = useAddressToSuiNS(address);
+    const { data: suins } = useResolveSuiNSName(address);
 
     return (
         <Disclosure>
