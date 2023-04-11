@@ -1531,17 +1531,18 @@ where
     }
 
     fn iter(&'a self) -> Self::Iterator {
-        let report_metrics = if self.iter_latency_sample_interval.sample() {
-            let timer = self
-                .db_metrics
-                .op_metrics
-                .rocksdb_iter_latency_seconds
-                .with_label_values(&[&self.cf])
-                .start_timer();
-            Some((timer, RocksDBPerfContext::default()))
-        } else {
-            None
-        };
+        let report_metrics =
+            if self.iter_latency_sample_interval.sample() || self.cf == "coin_index" {
+                let timer = self
+                    .db_metrics
+                    .op_metrics
+                    .rocksdb_iter_latency_seconds
+                    .with_label_values(&[&self.cf])
+                    .start_timer();
+                Some((timer, RocksDBPerfContext::default()))
+            } else {
+                None
+            };
         let db_iter = self
             .rocksdb
             .raw_iterator_cf(&self.cf(), self.opts.readopts());
