@@ -567,6 +567,9 @@ importers:
       '@typescript-eslint/parser':
         specifier: ^5.55.0
         version: 5.55.0(eslint@8.36.0)(typescript@4.9.5)
+      '@vitejs/plugin-react':
+        specifier: ^3.1.0
+        version: 3.1.0(vite@4.2.1)
       concurrently:
         specifier: ^7.6.0
         version: 7.6.0
@@ -1007,10 +1010,10 @@ importers:
         version: 13.2.4(react-dom@18.2.0)(react@18.2.0)
       nextra:
         specifier: latest
-        version: 2.3.0(next@13.2.4)(react-dom@18.2.0)(react@18.2.0)
+        version: 2.2.19(next@13.2.4)(react-dom@18.2.0)(react@18.2.0)
       nextra-theme-docs:
         specifier: latest
-        version: 2.3.0(next@13.2.4)(nextra@2.3.0)(react-dom@18.2.0)(react@18.2.0)
+        version: 2.2.19(next@13.2.4)(nextra@2.2.19)(react-dom@18.2.0)(react@18.2.0)
       react:
         specifier: ^18.2.0
         version: 18.2.0
@@ -14730,11 +14733,11 @@ packages:
       - babel-plugin-macros
     dev: false
 
-  /nextra-theme-docs@2.3.0(next@13.2.4)(nextra@2.3.0)(react-dom@18.2.0)(react@18.2.0):
-    resolution: {integrity: sha512-KMvHhGOvaKIqR71Gnx+w/1c9LLfpQJ3+fnCAgg9qfjXo2agr1zRKyRDROyY8cGINdslpzmEGgs/MH2gDSAI6nw==}
+  /nextra-theme-docs@2.2.19(next@13.2.4)(nextra@2.2.19)(react-dom@18.2.0)(react@18.2.0):
+    resolution: {integrity: sha512-+5PcNgHwxwSAmQZlbV2cbjbvxj7CPYnN44OtWNxHQ8L3dzlw6fUyIJtyCUcGbDHpFC3sHmwYgB3OCWH8m4P35Q==}
     peerDependencies:
       next: '>=9.5.3'
-      nextra: 2.3.0
+      nextra: 2.2.19
       react: '>=16.13.1'
       react-dom: '>=16.13.1'
     dependencies:
@@ -14749,16 +14752,15 @@ packages:
       next: 13.2.4(react-dom@18.2.0)(react@18.2.0)
       next-seo: 5.15.0(next@13.2.4)(react-dom@18.2.0)(react@18.2.0)
       next-themes: 0.2.1(next@13.2.4)(react-dom@18.2.0)(react@18.2.0)
-      nextra: 2.3.0(next@13.2.4)(react-dom@18.2.0)(react@18.2.0)
+      nextra: 2.2.19(next@13.2.4)(react-dom@18.2.0)(react@18.2.0)
       react: 18.2.0
       react-dom: 18.2.0(react@18.2.0)
       scroll-into-view-if-needed: 3.0.6
       zod: 3.21.4
     dev: false
 
-  /nextra@2.3.0(next@13.2.4)(react-dom@18.2.0)(react@18.2.0):
-    resolution: {integrity: sha512-v17vMq2bJa15iKKt9+6AidSeIoKcK1ZlXmwqFqTgc0pQmRrl6pTJaSR36UZKcpMwvvLZ/7/xWuWV/OQB599O3g==}
-    engines: {node: '>=16'}
+  /nextra@2.2.19(next@13.2.4)(react-dom@18.2.0)(react@18.2.0):
+    resolution: {integrity: sha512-QmgbJvT1lfmFCM8n5gfGTA5p8efw20N/oZP9ojBhWhmatq/PwAp7VoSeTan6TT9Yspv6PmnrgpqKhYGzPSkFVw==}
     peerDependencies:
       next: '>=9.5.3'
       react: '>=16.13.1'
@@ -14787,7 +14789,6 @@ packages:
       title: 3.5.3
       unist-util-remove: 3.1.1
       unist-util-visit: 4.1.2
-      zod: 3.21.4
     transitivePeerDependencies:
       - supports-color
     dev: false
