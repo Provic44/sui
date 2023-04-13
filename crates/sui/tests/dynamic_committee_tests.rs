@@ -4,7 +4,7 @@
 use anyhow::Result;
 use async_trait::async_trait;
 use futures::future::join_all;
-use indexmap::IndexMap;
+use indexmap::{IndexMap, IndexSet};
 use move_core_types::ident_str;
 use prometheus::Registry;
 use rand::{rngs::StdRng, Rng, SeedableRng};
@@ -42,9 +42,12 @@ use test_utils::authority::test_authority_configs_with_objects;
 use tokio::time::timeout;
 use tracing::{info, warn};
 
-const MAX_DELEGATION_AMOUNT: u64 = 10_000_000_000;
-const MIN_DELEGATION_AMOUNT: u64 = 1_000_000_000;
+const MAX_DELEGATION_AMOUNT: u64 = 1_000_000 * MIST_PER_SUI;
+const MIN_DELEGATION_AMOUNT: u64 = MIST_PER_SUI;
 const MAX_GAS: u64 = 100_000_000;
+const MIST_PER_SUI: u64 = 1_000_000_000;
+// Each account gets 20 million SUI
+const INITIAL_MINT_AMOUNT: u64 = 20_000_000 * MIST_PER_SUI;
 
 macro_rules! move_call {
     {$builder:expr, ($addr:expr)::$module_name:ident::$func:ident($($args:expr),* $(,)?)} => {
@@ -59,8 +62,7 @@ macro_rules! move_call {
 }
 
 trait GenStateChange {
-    type StateChange: StatePredicate;
-    fn create(&self, runner: &mut StressTestRunner) -> Self::StateChange;
+    fn create(&self, runner: &mut StressTestRunner) -> Option<Box<dyn StatePredicate>>;
 }
 
 #[async_trait]
@@ -68,21 +70,91 @@ trait StatePredicate {
     async fn run(&mut self, runner: &mut StressTestRunner) -> Result<TransactionEffects>;
     async fn pre_epoch_post_condition(
         &mut self,
-        runner: &StressTestRunner,
+        runner: &mut StressTestRunner,
         effects: &TransactionEffects,
     );
     async fn post_epoch_post_condition(
         &mut self,
-        runner: &StressTestRunner,
+        runner: &mut StressTestRunner,
         effects: &TransactionEffects,
     );
+}
+
+#[async_trait]
+impl<T: StatePredicate + std::marker::Send> StatePredicate for Box<T> {
+    async fn run(&mut self, runner: &mut StressTestRunner) -> Result<TransactionEffects> {
+        self.run(runner).await
+    }
+    async fn pre_epoch_post_condition(
+        &mut self,
+        runner: &mut StressTestRunner,
+        effects: &TransactionEffects,
+    ) {
+        self.pre_epoch_post_condition(runner, effects).await
+    }
+    async fn post_epoch_post_condition(
+        &mut self,
+        runner: &mut StressTestRunner,
+        effects: &TransactionEffects,
+    ) {
+        self.post_epoch_post_condition(runner, effects).await
+    }
+}
+
+struct AccountInfo {
+    pub addr: SuiAddress,
+    pub key: AccountKeyPair,
+    pub gas_object_id: ObjectID,
+    // address to stakedSui IDs
+    pub staked_with: IndexMap<SuiAddress, IndexSet<ObjectID>>,
+    pub staking_info: BTreeMap<ObjectID, (u64, u64)>,
+}
+
+impl AccountInfo {
+    pub fn new() -> Self {
+        let (addr, key): (_, AccountKeyPair) = get_key_pair();
+        let gas_object_id = ObjectID::random();
+        Self {
+            addr,
+            key,
+            gas_object_id,
+            staked_with: IndexMap::new(),
+            staking_info: BTreeMap::new(),
+        }
+    }
+
+    pub fn add_stake(
+        &mut self,
+        staked_with: SuiAddress,
+        stake_id: ObjectID,
+        stake_amount: u64,
+        current_epoch: u64,
+    ) {
+        let stakes = self
+            .staked_with
+            .entry(staked_with)
+            .or_insert_with(IndexSet::new);
+        stakes.insert(stake_id);
+        self.staking_info
+            .insert(stake_id, (stake_amount, current_epoch));
+    }
+
+    pub fn remove_stake(&mut self, staked_with: SuiAddress, stake_id: ObjectID) {
+        let stakes_with_validator = self.staked_with.get_mut(&staked_with).unwrap();
+        stakes_with_validator.remove(&stake_id);
+        // should we remove this? Seems like it would be nice to keep it. But it could grow large.
+        // self.staking_info.remove(&stake_id);
+        if stakes_with_validator.is_empty() {
+            self.staked_with.remove(&staked_with);
+        }
+    }
 }
 
 #[allow(dead_code)]
 struct StressTestRunner {
     pub post_epoch_predicates: Vec<Box<dyn StatePredicate + Send + Sync>>,
     pub nodes: Vec<SuiNodeHandle>,
-    pub accounts: IndexMap<SuiAddress, (AccountKeyPair, ObjectID)>,
+    pub accounts: IndexMap<SuiAddress, AccountInfo>,
     pub active_validators: BTreeSet<SuiAddress>,
     pub preactive_validators: BTreeMap<SuiAddress, u64>,
     pub removed_validators: BTreeSet<SuiAddress>,
@@ -90,21 +162,23 @@ struct StressTestRunner {
     pub delegation_withdraws_this_epoch: u64,
     pub delegations: BTreeMap<ObjectID, SuiAddress>,
     pub reports: BTreeMap<SuiAddress, BTreeSet<SuiAddress>>,
+    pub pre_reconfiguration_states: BTreeMap<u64, SuiSystemStateSummary>,
     pub rng: StdRng,
 }
 
 impl StressTestRunner {
     pub async fn new() -> Self {
-        // let authority_state = init_state().await;
         let mut accounts = IndexMap::new();
         let mut objects = vec![];
         for _ in 0..100 {
-            let (sender, sender_key): (_, AccountKeyPair) = get_key_pair();
-            let gas_object_id = ObjectID::random();
-            let gas_object = Object::with_id_owner_for_testing(gas_object_id, sender);
+            let account = AccountInfo::new();
+            let gas_object = Object::with_id_owner_gas_for_testing(
+                account.gas_object_id,
+                account.addr,
+                INITIAL_MINT_AMOUNT,
+            );
             objects.push(gas_object);
-            // authority_state.insert_genesis_object(gas_object).await;
-            accounts.insert(sender, (sender_key, gas_object_id));
+            accounts.insert(account.addr, account);
         }
         let (net_config, _) = test_authority_configs_with_objects(objects);
         let nodes = spawn_test_authorities(&net_config).await;
@@ -120,6 +194,7 @@ impl StressTestRunner {
             delegations: BTreeMap::new(),
             reports: BTreeMap::new(),
             rng: StdRng::from_seed([0; 32]),
+            pre_reconfiguration_states: BTreeMap::new(),
         }
     }
 
@@ -214,17 +289,26 @@ impl StressTestRunner {
         info!("reconfiguration complete after {:?}", start.elapsed());
     }
 
+    pub async fn object_reference_for_id(&self, object_id: ObjectID) -> ObjectRef {
+        self.db()
+            .await
+            .get_object(&object_id)
+            .unwrap()
+            .unwrap()
+            .compute_object_reference()
+    }
+
     pub async fn run(
         &mut self,
         sender: SuiAddress,
         pt: ProgrammableTransaction,
     ) -> TransactionEffects {
-        let (sender_key, gas_object_id) = self.accounts.get(&sender).unwrap();
+        let account = self.accounts.get(&sender).unwrap();
         let (gas_object_ref, rgp) = self.nodes[0].with(|node| {
             let gas_object = node
                 .state()
                 .db()
-                .get_object(gas_object_id)
+                .get_object(&account.gas_object_id)
                 .unwrap()
                 .unwrap();
             let rgp = node.reference_gas_price_for_testing().unwrap();
@@ -232,12 +316,27 @@ impl StressTestRunner {
         });
         let signed_txn = to_sender_signed_transaction(
             TransactionData::new_programmable(sender, vec![gas_object_ref], pt, MAX_GAS, rgp),
-            sender_key,
+            &account.key,
         );
 
         let effects = self.execute_transaction_block(signed_txn).await.unwrap();
-        assert!(effects.status().is_ok());
         effects.into_data()
+    }
+
+    pub fn select_next_operation(
+        &mut self,
+        operations: &[Box<dyn GenStateChange>],
+    ) -> Box<dyn StatePredicate> {
+        const TRY_DIFFERENT_THRESHOLD: u64 = 5;
+        loop {
+            let index = self.rng.gen_range(0..operations.len());
+            let gen = &operations[index];
+            for _ in 0..TRY_DIFFERENT_THRESHOLD {
+                if let Some(task) = gen.create(self) {
+                    return task;
+                }
+            }
+        }
     }
 
     // Useful for debugging and the like
@@ -295,9 +394,11 @@ impl StressTestRunner {
         Self::trigger_reconfiguration(&self.nodes).await;
         let post_state_summary = self.system_state();
         info!(
-            "Changing epoch form {} to {}",
+            "Changing epoch from {} to {}",
             pre_state_summary.epoch, post_state_summary.epoch
         );
+        self.pre_reconfiguration_states
+            .insert(pre_state_summary.epoch, pre_state_summary);
     }
 
     pub async fn get_created_object_of_type_name(
@@ -358,25 +459,24 @@ mod add_stake {
     }
 
     impl GenStateChange for RequestAddStakeGen {
-        type StateChange = RequestAddStake;
-
-        fn create(&self, runner: &mut StressTestRunner) -> Self::StateChange {
+        fn create(&self, runner: &mut StressTestRunner) -> Option<Box<dyn StatePredicate>> {
             let stake_amount = runner
                 .rng
                 .gen_range(MIN_DELEGATION_AMOUNT..=MAX_DELEGATION_AMOUNT);
             let staked_with = runner.pick_random_active_validator().sui_address;
             let sender = runner.pick_random_sender();
-            RequestAddStake {
+            Some(Box::new(RequestAddStake {
                 sender,
                 stake_amount,
                 staked_with,
-            }
+            }))
         }
     }
 
     #[async_trait]
     impl StatePredicate for RequestAddStake {
         async fn run(&mut self, runner: &mut StressTestRunner) -> Result<TransactionEffects> {
+            println!("REQUEST ADD STAKE");
             let pt = {
                 let mut builder = ProgrammableTransactionBuilder::new();
                 builder
@@ -401,15 +501,25 @@ mod add_stake {
 
         async fn pre_epoch_post_condition(
             &mut self,
-            runner: &StressTestRunner,
+            runner: &mut StressTestRunner,
             effects: &TransactionEffects,
         ) {
+            // Adding stake should always succeed since we're above the staking threshold
+            assert!(effects.status().is_ok());
             // Assert that a `StakedSui` object matching the amount delegated is created.
             // Assert that this staked sui
             let object = runner
                 .get_created_object_of_type_name(effects, "StakedSui")
                 .await
                 .unwrap();
+            let epoch = runner.system_state().epoch;
+            runner.accounts.get_mut(&self.sender).unwrap().add_stake(
+                self.staked_with,
+                object.id(),
+                self.stake_amount,
+                epoch,
+            );
+            println!("Staked: {}", object.id());
             let staked_amount =
                 object.get_total_sui(&runner.db().await).unwrap() - object.storage_rebate;
             assert_eq!(staked_amount, self.stake_amount);
@@ -419,7 +529,7 @@ mod add_stake {
 
         async fn post_epoch_post_condition(
             &mut self,
-            _runner: &StressTestRunner,
+            _runner: &mut StressTestRunner,
             _effects: &TransactionEffects,
         ) {
             todo!()
@@ -427,23 +537,149 @@ mod add_stake {
     }
 }
 
+mod withdraw_stake {
+    use super::*;
+
+    pub struct RequestWithdrawStakeGen;
+
+    pub struct RequestWithdrawStake {
+        pub sender: SuiAddress,
+        pub stake_id: ObjectID,
+        pub staked_with: SuiAddress,
+    }
+
+    impl GenStateChange for RequestWithdrawStakeGen {
+        fn create(&self, runner: &mut StressTestRunner) -> Option<Box<dyn StatePredicate>> {
+            let sender = runner.pick_random_sender();
+            let account = runner.accounts.get(&sender).unwrap();
+            if account.staked_with.is_empty() {
+                return None;
+            }
+            let (staked_with, stakes) = account
+                .staked_with
+                .get_index(runner.rng.gen_range(0..account.staked_with.len()))
+                .unwrap();
+            assert!(!stakes.is_empty());
+            let stake_id = stakes[runner.rng.gen_range(0..stakes.len())];
+            Some(Box::new(RequestWithdrawStake {
+                sender,
+                stake_id,
+                staked_with: *staked_with,
+            }))
+        }
+    }
+
+    #[async_trait]
+    impl StatePredicate for RequestWithdrawStake {
+        async fn run(&mut self, runner: &mut StressTestRunner) -> Result<TransactionEffects> {
+            println!("REQUEST WITHDRAW STAKE {}", self.stake_id);
+            let pt = {
+                let mut builder = ProgrammableTransactionBuilder::new();
+                builder
+                    .obj(ObjectArg::SharedObject {
+                        id: SUI_SYSTEM_STATE_OBJECT_ID,
+                        initial_shared_version: SUI_SYSTEM_STATE_OBJECT_SHARED_VERSION,
+                        mutable: true,
+                    })
+                    .unwrap();
+                builder
+                    .obj(ObjectArg::ImmOrOwnedObject(
+                        runner.object_reference_for_id(self.stake_id).await,
+                    ))
+                    .unwrap();
+                move_call! {
+                    builder,
+                    (SUI_SYSTEM_PACKAGE_ID)::sui_system::request_withdraw_stake(Argument::Input(0), Argument::Input(1))
+                };
+                builder.finish()
+            };
+            let effects = runner.run(self.sender, pt).await;
+
+            Ok(effects)
+        }
+
+        async fn pre_epoch_post_condition(
+            &mut self,
+            runner: &mut StressTestRunner,
+            effects: &TransactionEffects,
+        ) {
+            if effects.status().is_ok() {
+                let (stake_amount, _staking_epoch) = {
+                    let account = runner.accounts.get_mut(&self.sender).unwrap();
+                    account.remove_stake(self.staked_with, self.stake_id);
+                    let (stake_amount, staking_epoch) =
+                        account.staking_info.get(&self.stake_id).unwrap();
+                    (*stake_amount, *staking_epoch)
+                };
+                let object = runner
+                    .get_created_object_of_type_name(effects, "Coin")
+                    .await
+                    .unwrap();
+                let return_amount =
+                    object.get_total_sui(&runner.db().await).unwrap() - object.storage_rebate;
+                println!("STAKED: {}, returned: {}", stake_amount, return_amount);
+                // assert_eq!(
+                //     utils::calculate_rewards(
+                //         stake_amount,
+                //         staking_epoch,
+                //         runner.system_state().epoch,
+                //         &runner.pre_reconfiguration_states
+                //     )
+                //     .unwrap(),
+                //     return_amount
+                // );
+            } else {
+                println!("STATUS: {:#?}", effects.status());
+            }
+            runner.display_effects(effects);
+        }
+
+        async fn post_epoch_post_condition(
+            &mut self,
+            _runner: &mut StressTestRunner,
+            _effects: &TransactionEffects,
+        ) {
+            todo!()
+        }
+    }
+}
+
+// mod utils {
+//     use super::*;
+//     // TODO: actually calculate the rewards here
+//     pub fn calculate_rewards(
+//         _initial_amount: u64,
+//         start_epoch: u64,
+//         end_epoch: u64,
+//         _system_states: &BTreeMap<u64, SuiSystemStateSummary>,
+//     ) -> Option<u64> {
+//         if start_epoch >= end_epoch {
+//             return None;
+//         }
+//         std::todo!()
+//     }
+// }
+
 #[tokio::test]
 async fn fuzz_dynamic_committee() {
     let num_operations = 10;
 
     // Add more actions here as we create them
-    let actions = vec![Box::new(add_stake::RequestAddStakeGen)];
+    let actions: Vec<Box<dyn GenStateChange>> = vec![
+        Box::new(add_stake::RequestAddStakeGen),
+        Box::new(withdraw_stake::RequestWithdrawStakeGen),
+    ];
 
     let mut runner = StressTestRunner::new().await;
 
     for i in 0..num_operations {
-        if i == 5 {
+        if i % 5 == 0 {
+            println!("Changing epoch");
             runner.change_epoch().await;
             continue;
         }
-        let index = runner.rng.gen_range(0..actions.len());
-        let mut task = actions[index].create(&mut runner);
+        let mut task = runner.select_next_operation(actions.as_slice());
         let effects = task.run(&mut runner).await.unwrap();
-        task.pre_epoch_post_condition(&runner, &effects).await;
+        task.pre_epoch_post_condition(&mut runner, &effects).await;
     }
 }
