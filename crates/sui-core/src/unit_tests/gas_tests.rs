@@ -9,10 +9,11 @@ use crate::authority::authority_tests::{init_state, init_state_with_ids_and_obje
 use move_core_types::account_address::AccountAddress;
 use move_core_types::ident_str;
 use once_cell::sync::Lazy;
+use rand::Rng;
 use sui_protocol_config::ProtocolConfig;
 use sui_types::crypto::AccountKeyPair;
 use sui_types::gas::SuiCostTable;
-use sui_types::gas_coin::GasCoin;
+use sui_types::gas_coin::{GasCoin, TOTAL_SUPPLY_MIST};
 use sui_types::object::GAS_VALUE_FOR_TESTING;
 use sui_types::programmable_transaction_builder::ProgrammableTransactionBuilder;
 use sui_types::utils::to_sender_signed_transaction;
