@@ -7,7 +7,6 @@ use std::sync::Arc;
 use anyhow::anyhow;
 use async_trait::async_trait;
 use fastcrypto::encoding::Base64;
-use futures::executor::block_on;
 use futures::future::join_all;
 use itertools::Itertools;
 use jsonrpsee::core::RpcResult;
@@ -389,7 +388,7 @@ impl ReadApi {
 
 #[async_trait]
 impl ReadApiServer for ReadApi {
-    fn get_object(
+    async fn get_object(
         &self,
         object_id: ObjectID,
         options: Option<SuiObjectDataOptions>,
@@ -433,7 +432,7 @@ impl ReadApiServer for ReadApi {
         }
     }
 
-    fn multi_get_objects(
+    async fn multi_get_objects(
         &self,
         object_ids: Vec<ObjectID>,
         options: Option<SuiObjectDataOptions>,
@@ -442,10 +441,12 @@ impl ReadApiServer for ReadApi {
             self.metrics
                 .get_objects_limit
                 .report(object_ids.len() as u64);
-            let mut results = vec![];
+            let mut futures = vec![];
             for object_id in object_ids {
-                results.push(self.get_object(object_id, options.clone()));
+                futures.push(self.get_object(object_id, options.clone()));
             }
+            let results = join_all(futures).await;
+
             let objects_result: Result<Vec<SuiObjectResponse>, String> = results
                 .into_iter()
                 .map(|result| match result {
@@ -523,23 +524,22 @@ impl ReadApiServer for ReadApi {
         }
     }
 
-    fn try_multi_get_past_objects(
+    async fn try_multi_get_past_objects(
         &self,
         past_objects: Vec<SuiGetPastObjectRequest>,
         options: Option<SuiObjectDataOptions>,
     ) -> RpcResult<Vec<SuiPastObjectResponse>> {
         if past_objects.len() <= QUERY_MAX_RESULT_LIMIT {
-            let results = block_on(async {
-                let mut futures = vec![];
-                for past_object in past_objects {
-                    futures.push(self.try_get_past_object(
-                        past_object.object_id,
-                        past_object.version,
-                        options.clone(),
-                    ));
-                }
-                join_all(futures).await
-            });
+            let mut futures = vec![];
+            for past_object in past_objects {
+                futures.push(self.try_get_past_object(
+                    past_object.object_id,
+                    past_object.version,
+                    options.clone(),
+                ));
+            }
+            let results = join_all(futures).await;
+
             let (oks, errs): (Vec<_>, Vec<_>) = results.into_iter().partition(Result::is_ok);
             let success = oks.into_iter().filter_map(Result::ok).collect();
             let errors: Vec<_> = errs.into_iter().filter_map(Result::err).collect();
@@ -683,17 +683,17 @@ impl ReadApiServer for ReadApi {
         ))
     }
 
-    fn multi_get_transaction_blocks(
+    async fn multi_get_transaction_blocks(
         &self,
         digests: Vec<TransactionDigest>,
         opts: Option<SuiTransactionBlockResponseOptions>,
     ) -> RpcResult<Vec<SuiTransactionBlockResponse>> {
-        Ok(block_on(
-            self.multi_get_transaction_blocks_internal(digests, opts),
-        )?)
+        Ok(self
+            .multi_get_transaction_blocks_internal(digests, opts)
+            .await?)
     }
 
-    fn get_events(&self, transaction_digest: TransactionDigest) -> RpcResult<Vec<SuiEvent>> {
+    async fn get_events(&self, transaction_digest: TransactionDigest) -> RpcResult<Vec<SuiEvent>> {
         let store = self.state.load_epoch_store_one_call_per_task();
         let effect = self.state.get_executed_effects(transaction_digest)?;
         let events = if let Some(event_digest) = effect.events_digest() {
@@ -738,7 +738,7 @@ impl ReadApiServer for ReadApi {
         Ok(self.get_checkpoint_internal(id)?)
     }
 
-    fn get_checkpoints(
+    async fn get_checkpoints(
         &self,
         // If `Some`, the query will start from the next item after the specified cursor
         cursor: Option<BigInt<u64>>,
