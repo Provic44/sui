@@ -58,6 +58,9 @@ const textStyles = cva([], {
             true: 'font-mono',
             false: 'font-sans',
         },
+        lineHeight: {
+            normal: 'leading-normal',
+        },
     },
     defaultVariants: {
         weight: 'medium',
