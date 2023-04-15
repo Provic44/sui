@@ -1,5 +1,13 @@
 # @mysten/sui.js
 
+## 0.32.2
+
+### Patch Changes
+
+- c219e7470: Changed the response type of `getRpcApiVersion` to string.
+- 59ae0e7d6: Removed `skipDataValidation` option, this is now not configurable and is the default behavior.
+- c219e7470: Fix type of `limit` on `getCheckpoints` and `getEpochs` API so that is correctly a number.
+
 ## 0.32.1
 
 ### Patch Changes

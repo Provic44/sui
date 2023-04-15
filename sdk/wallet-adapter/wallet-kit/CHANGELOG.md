@@ -1,5 +1,19 @@
 # @mysten/wallet-kit
 
+## 0.4.4
+
+### Patch Changes
+
+- Updated dependencies [c219e7470]
+- Updated dependencies [59ae0e7d6]
+- Updated dependencies [c219e7470]
+  - @mysten/sui.js@0.32.2
+  - @mysten/wallet-adapter-base@0.7.4
+  - @mysten/wallet-adapter-unsafe-burner@0.8.4
+  - @mysten/wallet-adapter-wallet-standard@0.7.4
+  - @mysten/wallet-kit-core@0.4.4
+  - @mysten/wallet-standard@0.5.4
+
 ## 0.4.3
 
 ### Patch Changes
