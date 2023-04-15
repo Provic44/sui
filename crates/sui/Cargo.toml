@@ -29,6 +29,7 @@ tap = "1.0"
 inquire = "0.6.0"
 thiserror = "1.0.34"
 futures = "0.3.23"
+eyre = "0.6.8"
 
 sui-adapter = { path = "../sui-adapter" }
 sui-core = { path = "../sui-core" }
@@ -57,6 +58,8 @@ rocksdb = "0.20.1"
 
 tempfile = "3.3.0"
 telemetry-subscribers.workspace = true
+typed-store.workspace = true
+typed-store-derive.workspace = true
 
 move-core-types.workspace = true
 move-bytecode-utils.workspace = true

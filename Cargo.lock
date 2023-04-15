@@ -8811,6 +8811,7 @@ dependencies = [
  "const-str",
  "csv",
  "expect-test",
+ "eyre",
  "fastcrypto",
  "fs_extra",
  "futures",
@@ -8862,6 +8863,8 @@ dependencies = [
  "thiserror",
  "tokio",
  "tracing",
+ "typed-store",
+ "typed-store-derive",
  "unescape",
  "workspace-hack",
 ]

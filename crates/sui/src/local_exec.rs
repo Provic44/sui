@@ -38,10 +38,22 @@ use sui_types::object::{Data, Object, Owner};
 use sui_types::storage::get_module_by_id;
 use sui_types::storage::{BackingPackageStore, ChildObjectResolver, ObjectStore, ParentSync};
 use thiserror::Error;
+use typed_store::rocks::DBMap;
+use typed_store::traits::Map;
+use typed_store::traits::TableSummary;
+use typed_store::traits::TypedStoreDebug;
+use typed_store_derive::DBMapUtils;
+
+#[derive(DBMapUtils)]
+pub struct Cache {
+    pub versioned_objects: DBMap<(ObjectID, SequenceNumber), Object>,
+    pub latest_known_objects: DBMap<ObjectID, (ObjectID, SequenceNumber)>,
+}
 
 pub struct LocalExec {
     client: SuiClient,
     testnet: bool,
+    //cache: Arc<Cache>,
     curr_tx: Option<TransactionDigest>,
     store: BTreeMap<ObjectID, Object>,
     package_cache: RefCell<BTreeMap<ObjectID, Object>>,
@@ -126,6 +138,7 @@ impl LocalExec {
 
     pub fn new(client: SuiClient, testnet: bool) -> Self {
         Self {
+            //cache: Arc::new(Cache::open("local_exec_cache", None)),
             client,
             testnet,
             curr_tx: None,
