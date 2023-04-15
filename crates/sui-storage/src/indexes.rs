@@ -312,6 +312,21 @@ impl IndexStore {
             }),
         )?;
 
+        // Loaded child objects table
+        if let Some(loaded_child_objects) = loaded_child_objects {
+            println!(
+                "To index for {} Loaded child objects: {:?}",
+                digest, loaded_child_objects
+            );
+            let loaded_child_objects: Vec<_> = loaded_child_objects.into_iter().collect();
+            batch.insert_batch(
+                &self.tables.dynamic_field_loaded_child_object_versions,
+                std::iter::once((*digest, loaded_child_objects)),
+            )?;
+        } else {
+            println!("No child objects to index {}", digest);
+        }
+
         batch.write()?;
 
         Ok(sequence)

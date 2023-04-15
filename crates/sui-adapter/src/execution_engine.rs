@@ -15,6 +15,7 @@ use sui_types::base_types::ObjectID;
 use sui_types::gas_coin::GAS;
 use sui_types::programmable_transaction_builder::ProgrammableTransactionBuilder;
 use tracing::{info, instrument, trace, warn};
+use sui_types::committee::EpochId;
 
 use crate::programmable_transactions;
 use sui_macros::checked_arithmetic;
@@ -57,6 +58,46 @@ pub fn execute_transaction_to_effects<
     S: BackingPackageStore + ParentSync + ChildObjectResolver + ObjectStore + GetModule,
 >(
     shared_object_refs: Vec<ObjectRef>,
+    temporary_store: TemporaryStore<S>,
+    transaction_kind: TransactionKind,
+    transaction_signer: SuiAddress,
+    gas: &[ObjectRef],
+    transaction_digest: TransactionDigest,
+    transaction_dependencies: BTreeSet<TransactionDigest>,
+    move_vm: &Arc<MoveVM>,
+    gas_status: SuiGasStatus,
+    epoch_data: &EpochData,
+    protocol_config: &ProtocolConfig,
+    enable_expensive_checks: bool
+) -> (
+    InnerTemporaryStore,
+    TransactionEffects,
+    Result<Mode::ExecutionResults, ExecutionError>,
+) {
+    // Separating out impl so we can call this from other context
+    execute_transaction_to_effects_impl::<Mode, S>(
+        shared_object_refs,
+        temporary_store,
+        transaction_kind,
+        transaction_signer,
+        gas,
+        transaction_digest,
+        transaction_dependencies,
+        move_vm,
+        gas_status,
+        &epoch_data.epoch_id(),
+        epoch_data.epoch_start_timestamp(),
+        protocol_config,
+        enable_expensive_checks
+    )
+}
+
+/// Separating out impl so we can call this from other context
+pub fn execute_transaction_to_effects_impl<
+    Mode: ExecutionMode,
+    S: BackingPackageStore + ParentSync + ChildObjectResolver + ObjectStore + GetModule,
+>(
+    shared_object_refs: Vec<ObjectRef>,
     mut temporary_store: TemporaryStore<S>,
     transaction_kind: TransactionKind,
     transaction_signer: SuiAddress,
@@ -65,14 +106,16 @@ pub fn execute_transaction_to_effects<
     mut transaction_dependencies: BTreeSet<TransactionDigest>,
     move_vm: &Arc<MoveVM>,
     gas_status: SuiGasStatus,
-    epoch_data: &EpochData,
+    epoch_id: &EpochId,
+    epoch_timestamp_ms: u64,
     protocol_config: &ProtocolConfig,
+    enable_expensive_checks: bool
 ) -> (
     InnerTemporaryStore,
     TransactionEffects,
     Result<Mode::ExecutionResults, ExecutionError>,
 ) {
-    let mut tx_ctx = TxContext::new(&transaction_signer, &transaction_digest, epoch_data);
+    let mut tx_ctx = TxContext::new_from_components(&transaction_signer, &transaction_digest, epoch_id, epoch_timestamp_ms);
 
     #[cfg(debug_assertions)]
     let is_epoch_change = matches!(transaction_kind, TransactionKind::ChangeEpoch(_));
@@ -161,7 +204,7 @@ pub fn execute_transaction_to_effects<
         gas_cost_summary,
         status,
         gas,
-        epoch_data.epoch_id(),
+        *epoch_id,
     );
     (inner, effects, execution_result)
 }

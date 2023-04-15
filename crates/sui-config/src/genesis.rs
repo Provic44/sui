@@ -1413,6 +1413,7 @@ fn create_genesis_transaction(
                 SuiGasStatus::new_unmetered(protocol_config),
                 epoch_data,
                 protocol_config,
+                false /* disable expensive checks */
             );
         assert!(inner_temp_store.objects.is_empty());
         assert!(inner_temp_store.mutable_inputs.is_empty());

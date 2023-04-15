@@ -22,7 +22,7 @@ use sui_json_rpc_types::{
     SuiCoinMetadata, SuiCommittee, SuiEvent, SuiGetPastObjectRequest, SuiMoveNormalizedModule,
     SuiObjectDataOptions, SuiObjectResponse, SuiObjectResponseQuery, SuiPastObjectResponse,
     SuiTransactionBlockEffectsAPI, SuiTransactionBlockResponse, SuiTransactionBlockResponseOptions,
-    SuiTransactionBlockResponseQuery, TransactionBlocksPage,
+    SuiTransactionBlockResponseQuery, TransactionBlocksPage, SuiDynamicFieldLoadedChildObjectsResponse,
 };
 use sui_types::balance::Supply;
 use sui_types::base_types::{ObjectID, SequenceNumber, SuiAddress, TransactionDigest};
@@ -240,6 +240,17 @@ impl ReadApi {
             .api
             .http
             .dry_run_transaction_block(Base64::from_bytes(&bcs::to_bytes(&tx)?))
+            .await?)
+    }
+
+    pub async fn get_dynamic_fields_loaded_objects(
+        &self,
+        digest: TransactionDigest,
+    ) -> SuiRpcResult<SuiDynamicFieldLoadedChildObjectsResponse> {
+        Ok(self
+            .api
+            .http
+            .get_dynamic_fields_loaded_objects(digest)
             .await?)
     }
 }

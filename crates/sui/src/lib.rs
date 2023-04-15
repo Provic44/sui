@@ -10,6 +10,7 @@ pub mod keytool;
 pub mod shell;
 pub mod sui_commands;
 pub mod validator_commands;
+pub mod local_exec;
 
 pub mod genesis_ceremony;
 pub mod genesis_inspector;

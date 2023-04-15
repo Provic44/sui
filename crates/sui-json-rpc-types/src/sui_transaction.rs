@@ -1538,6 +1538,18 @@ pub struct SuiPureValue {
     value: SuiJsonValue,
 }
 
+
+impl SuiPureValue {
+    pub fn value(&self) -> SuiJsonValue {
+        self.value.clone()
+    }
+
+    pub fn value_type(&self) -> Option<TypeTag> {
+        self.value_type.clone()
+    }
+}
+
+
 #[serde_as]
 #[derive(Eq, PartialEq, Debug, Clone, Serialize, Deserialize, JsonSchema)]
 #[serde(tag = "objectType", rename_all = "camelCase")]

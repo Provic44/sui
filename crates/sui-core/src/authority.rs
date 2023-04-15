@@ -999,6 +999,7 @@ impl AuthorityState {
                 gas_status,
                 &epoch_store.epoch_start_config().epoch_data(),
                 epoch_store.protocol_config(),
+                false // skip expensive checks
             );
 
         Ok((inner_temp_store, effects))
@@ -1094,6 +1095,7 @@ impl AuthorityState {
                 gas_status,
                 &epoch_store.epoch_start_config().epoch_data(),
                 epoch_store.protocol_config(),
+                false // skip expensive checks
             );
         let tx_digest = *effects.transaction_digest();
 
@@ -1207,6 +1209,7 @@ impl AuthorityState {
                 gas_status,
                 &epoch_store.epoch_start_config().epoch_data(),
                 protocol_config,
+                false, // skip expensive checks
             );
 
         let module_cache =

@@ -9,6 +9,9 @@ use std::{
     path::{Path, PathBuf},
     time::Instant,
 };
+use std::collections::VecDeque;
+use crate::local_exec::LocalExec;
+use sui_config::node::ExpensiveSafetyCheckConfig;
 
 use crate::config::{Config, PersistedConfig, SuiClientConfig, SuiEnv};
 use anyhow::{anyhow, ensure};
@@ -476,6 +479,13 @@ pub enum SuiClientCommands {
         /// A list of Base64 encoded signatures `flag || signature || pubkey`.
         #[clap(long)]
         signatures: Vec<String>,
+    },
+
+    LocalExec {
+        #[clap(long, value_hint = ValueHint::Url)]
+        rpc: String,
+        #[clap(name = "digest")]
+        digest: TransactionDigest,
     },
 }
 
@@ -1148,6 +1158,54 @@ impl SuiClientCommands {
                     .await?;
 
                 SuiClientCommandResult::VerifySource
+            }
+            SuiClientCommands::LocalExec { rpc, digest } => {
+                let mut count = 0;
+
+                let deps = LocalExec::new_from_fn_url(&rpc)
+                    .await
+                    .execute(&digest, ExpensiveSafetyCheckConfig::new_enable_all())
+                    .unwrap();
+
+                let mut deps_stack = VecDeque::from(deps.clone());
+                let mut seen = BTreeSet::new();
+                seen.insert(digest);
+                while !deps_stack.is_empty() {
+                    count += 1;
+                    println!(
+                        "\n\n\n <========> \n Num deps{} @ {}",
+                        deps_stack.len(),
+                        count
+                    );
+                    let dep = deps_stack.pop_front().unwrap();
+                    if seen.contains(&dep) {
+                        println!("Already seen {}", dep);
+                        continue;
+                    }
+                    seen.insert(dep);
+
+                    println!("Running for dep {}", dep);
+                    let new_deps = LocalExec::new_from_fn_url(&rpc)
+                        .await
+                        .execute(&dep, ExpensiveSafetyCheckConfig::new_enable_all())
+                        .unwrap();
+                    deps_stack.extend(new_deps);
+                }
+                // for dep in deps_stack {
+                //     println!("\n\n");
+                //     println!("Running for dep {}", dep);
+                //     let new_deps = LocalExec::new_from_fn_url(&rpc)
+                //         .await
+                //         .execute(
+                //             &dep,
+                //             &protocol_config,
+                //             ExpensiveSafetyCheckConfig::new_enable_all(),
+                //         )
+                //         .unwrap();
+                //     deps_stack.append(new_deps);
+                // }
+
+                SuiClientCommandResult::SyncClientState
             }
         });
         ret
