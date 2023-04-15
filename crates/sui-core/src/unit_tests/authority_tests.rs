@@ -2875,6 +2875,7 @@ async fn test_authority_persist() {
             &[], // no genesis objects
             &DBCheckpointConfig::default(),
             ExpensiveSafetyCheckConfig::new_enable_all(),
+            Default::default(),
         )
         .await
     }
