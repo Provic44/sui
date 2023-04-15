@@ -88,8 +88,10 @@ pub fn execute<S: StorageView, Mode: ExecutionMode>(
     let ExecutionResults {
         object_changes,
         user_events,
+        loaded_child_objects
     } = context.finish::<Mode>()?;
-    state_view.apply_object_changes(object_changes);
+    println!("execute finish loaded {:?}", loaded_child_objects);
+    state_view.apply_object_changes(object_changes, loaded_child_objects);
     for (module_id, tag, contents) in user_events {
         state_view.log_event(Event::new(
             module_id.address(),

@@ -4,14 +4,15 @@
 //! IndexStore supports creation of various ancillary indexes of state in SuiDataStore.
 //! The main user of this data is the explorer.
 
-use std::cmp::{max, min};
-use std::path::PathBuf;
-use std::sync::atomic::{AtomicU64, Ordering};
-
 use anyhow::anyhow;
 use move_core_types::identifier::Identifier;
 use move_core_types::language_storage::{ModuleId, StructTag};
 use serde::{de::DeserializeOwned, Serialize};
+use std::cmp::{max, min};
+use std::collections::BTreeMap;
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
+use sui_types::base_types::SequenceNumber;
 use tracing::debug;
 
 use sui_json_rpc_types::SuiObjectDataFilter;
@@ -97,6 +98,10 @@ pub struct IndexStoreTables {
     #[default_options_override_fn = "dynamic_field_index_table_default_config"]
     dynamic_field_index: DBMap<DynamicFieldKey, DynamicFieldInfo>,
 
+    /// This is an index of all the versions of loaded dynamic field objects
+    dynamic_field_loaded_child_object_versions:
+        DBMap<TransactionDigest, Vec<(ObjectID, SequenceNumber)>>,
+
     #[default_options_override_fn = "index_table_default_config"]
     event_order: DBMap<EventId, EventIndex>,
     #[default_options_override_fn = "index_table_default_config"]
@@ -178,6 +183,7 @@ impl IndexStore {
         object_index_changes: ObjectIndexChanges,
         digest: &TransactionDigest,
         timestamp_ms: u64,
+        loaded_child_objects: Option<BTreeMap<ObjectID, SequenceNumber>>,
     ) -> SuiResult<u64> {
         let sequence = self.next_sequence_number.fetch_add(1, Ordering::SeqCst);
 
@@ -381,6 +387,17 @@ impl IndexStore {
                 }
             }
         }
+    }
+
+    /// Returns dynamic field loaded objects table for a tx
+    pub fn get_dynamic_field_loaded_child_object_versions(
+        &self,
+        transaction_digest: &TransactionDigest,
+    ) -> SuiResult<Option<Vec<(ObjectID, SequenceNumber)>>> {
+        self.tables
+            .dynamic_field_loaded_child_object_versions
+            .get(transaction_digest)
+            .map_err(|err| err.into())
     }
 
     /// Returns unix timestamp for a transaction if it exists

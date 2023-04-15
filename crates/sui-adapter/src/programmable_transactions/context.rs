@@ -739,6 +739,7 @@ impl<'vm, 'state, 'a, 'b, S: StorageView> ExecutionContext<'vm, 'state, 'a, 'b, 
         Ok(ExecutionResults {
             object_changes,
             user_events,
+            loaded_child_objects: Some(loaded_child_objects),
         })
     }
 
