@@ -15,63 +15,70 @@ import PageLayout from '_pages/layout';
 
 import st from './Welcome.module.scss';
 
+const VALUE_PROP = [
+    'Send, receive tokens and NFTs',
+    'Stake SUI to earn rewards. Help the Sui network remain decentralized.',
+    'Explore apps on Sui blockchain',
+    'Quickly revoke access connection given to apps',
+    'Track your Sui network activity',
+];
+
 const WelcomePage = () => {
     const checkingInitialized = useInitializedGuard(false);
     return (
         <PageLayout forceFullscreen={true}>
             <Loading loading={checkingInitialized}>
                 <div className="flex flex-col flex-nowrap items-center justify-center">
-                    <div className="pt-6 rounded-20 bg-sui-lightest shadow-wallet-content flex flex-col flex-nowrap items-center justify-center w-popup-width h-popup-height">
+                    <div className="rounded-20 bg-sui-lightest shadow-wallet-content flex flex-col flex-nowrap items-center justify-center w-popup-width h-popup-height">
                         <BottomMenuLayout>
                             <Content className="flex flex-col flex-nowrap items-center p-7.5 pb-0">
                                 <div className="mt-7.5 text-hero">
                                     <Logo />
                                 </div>
-                                <div className="mx-auto text-center mt-12">
-                                    <Heading
-                                        variant="heading2"
-                                        color="gray-90"
-                                        as="h1"
-                                        weight="bold"
-                                    >
-                                        Welcome to Sui Wallet
-                                    </Heading>
-                                    <div className="mt-5">
-                                        <Text
-                                            variant="p1"
-                                            color="steel-dark"
-                                            weight="medium"
-                                        >
-                                            Connecting you to the decentralized
-                                            web and Sui network.
-                                        </Text>
-                                    </div>
-                                    <div className="flex gap-2 mt-10 items-center">
-                                        <Icon
-                                            icon={SuiIcons.Checkmark}
-                                            className="text-success text-[8px]"
-                                        />
 
-                                        <Text
-                                            variant="body"
-                                            color="steel-dark"
-                                            weight="medium"
+                                <div className="mx-auto mt-7">
+                                    <div className="text-center">
+                                        <Heading
+                                            variant="heading2"
+                                            color="gray-90"
+                                            as="h1"
+                                            weight="bold"
                                         >
-                                            Buy, store, send and swap tokens
-                                        </Text>
+                                            Welcome to Sui Wallet
+                                        </Heading>
+                                        <div className="mt-3">
+                                            <Text
+                                                variant="p1"
+                                                color="steel-dark"
+                                                weight="medium"
+                                            >
+                                                Connecting you to the
+                                                decentralized web and Sui
+                                                network.
+                                            </Text>
+                                        </div>
                                     </div>
-                                    <div className="flex gap-2 mt-3 items-center">
-                                        <Icon
-                                            icon={SuiIcons.Checkmark}
-                                            className="text-success text-[8px]"
-                                        />
-                                        <Text
-                                            variant="body"
-                                            color="steel-dark"
-                                            weight="medium"
-                                        >
-                                            Explore blockchain apps
-                                        </Text>
+
+                                    <div className="mt-5 flex gap-2 flex-col">
+                                        {VALUE_PROP.map((value) => (
+                                            <div
+                                                key={value}
+                                                className="flex gap-2 items-center border bg-sui-light/40 border-sui/30 border-solid rounded-xl px-3 py-2"
+                                            >
+                                                <Icon
+                                                    icon={SuiIcons.Checkmark}
+                                                    className="text-white text-[6px] bg-steel rounded-full h-4 min-w-[16px] w-4 flex items-center justify-center"
+                                                />
+
+                                                <Text
+                                                    variant="p1"
+                                                    color="steel-darker"
+                                                    weight="medium"
+                                                >
+                                                    {value}
+                                                </Text>
+                                            </div>
+                                        ))}
                                     </div>
                                 </div>
                             </Content>
