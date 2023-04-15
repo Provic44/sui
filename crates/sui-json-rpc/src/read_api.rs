@@ -775,13 +775,14 @@ impl ReadApiServer for ReadApi {
         })
     }
 
-    fn get_checkpoints_deprecated_limit(
+    async fn get_checkpoints_deprecated_limit(
         &self,
         cursor: Option<BigInt<u64>>,
         limit: Option<BigInt<u64>>,
         descending_order: bool,
     ) -> RpcResult<CheckpointPage> {
         self.get_checkpoints(cursor, limit.map(|l| *l as usize), descending_order)
+            .await
     }
 }
 

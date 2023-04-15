@@ -106,8 +106,8 @@ pub trait ReadApi {
         descending_order: bool,
     ) -> RpcResult<CheckpointPage>;
 
-    #[method(name = "getCheckpoints", version <= "0.31", blocking)]
-    fn get_checkpoints_deprecated_limit(
+    #[method(name = "getCheckpoints", version <= "0.31")]
+    async fn get_checkpoints_deprecated_limit(
         &self,
         /// An optional paging cursor. If provided, the query will start from the next item after the specified cursor. Default to start from the first item if not specified.
         cursor: Option<BigInt<u64>>,
