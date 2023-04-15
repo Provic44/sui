@@ -12,10 +12,10 @@ use sui_types::balance::{
     BALANCE_MODULE_NAME,
 };
 use sui_types::base_types::ObjectID;
+use sui_types::committee::EpochId;
 use sui_types::gas_coin::GAS;
 use sui_types::programmable_transaction_builder::ProgrammableTransactionBuilder;
 use tracing::{info, instrument, trace, warn};
-use sui_types::committee::EpochId;
 
 use crate::programmable_transactions;
 use sui_macros::checked_arithmetic;

@@ -999,7 +999,7 @@ impl AuthorityState {
                 gas_status,
                 &epoch_store.epoch_start_config().epoch_data(),
                 epoch_store.protocol_config(),
-                false // skip expensive checks
+                false, // skip expensive checks
             );
 
         Ok((inner_temp_store, effects))
@@ -1095,7 +1095,7 @@ impl AuthorityState {
                 gas_status,
                 &epoch_store.epoch_start_config().epoch_data(),
                 epoch_store.protocol_config(),
-                false // skip expensive checks
+                false, // skip expensive checks
             );
         let tx_digest = *effects.transaction_digest();
 
@@ -1456,18 +1456,14 @@ impl AuthorityState {
         loaded_child_objects: Option<BTreeMap<ObjectID, SequenceNumber>>,
     ) -> SuiResult {
         if self.indexes.is_none() {
-            println!("Exit pos processing tx");
             return Ok(());
         }
 
         let tx_digest = certificate.digest();
-        println!("Post processing tx: {tx_digest}");
 
         let timestamp_ms = Self::unixtime_now_ms();
         // Index tx
         if let Some(indexes) = &self.indexes {
-            println!("Post processing tx child objs: {:?}", loaded_child_objects);
-
             let res = self
                 .index_tx(
                     indexes.as_ref(),

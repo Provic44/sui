@@ -1538,7 +1538,6 @@ pub struct SuiPureValue {
     value: SuiJsonValue,
 }
 
-
 impl SuiPureValue {
     pub fn value(&self) -> SuiJsonValue {
         self.value.clone()
@@ -1548,7 +1547,6 @@ impl SuiPureValue {
         self.value_type.clone()
     }
 }
-
 
 #[serde_as]
 #[derive(Eq, PartialEq, Debug, Clone, Serialize, Deserialize, JsonSchema)]
@@ -1591,6 +1589,14 @@ impl SuiDynamicFieldLoadedChildObject {
             object_id,
             sequence_number,
         }
+    }
+
+    pub fn object_id(&self) -> ObjectID {
+        self.object_id
+    }
+
+    pub fn sequence_number(&self) -> SequenceNumber {
+        self.sequence_number
     }
 }
 

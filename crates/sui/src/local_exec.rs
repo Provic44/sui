@@ -121,7 +121,6 @@ impl LocalExec {
         Self::new(
             SuiClientBuilder::default().build(http_url).await.unwrap(),
             true, // Temporary hack due to epoch speed run bug. TODO: remove
-                  //http_url.contains("testnet"), /* hacky way to tell*/
         )
     }
 
@@ -150,8 +149,6 @@ impl LocalExec {
         object_id: &ObjectID,
         version: SequenceNumber,
     ) -> Result<Object, LocalExecError> {
-        println!("Downloading {} at {}", object_id, version);
-
         if self
             .object_version_cache
             .borrow()
@@ -190,8 +187,6 @@ impl LocalExec {
     }
 
     pub fn download_latest_object(&self, object_id: &ObjectID) -> Result<Object, LocalExecError> {
-        println!("Downloading----> {}", object_id);
-
         block_on(self.download_latest_object_impl(object_id))
     }
 
@@ -199,8 +194,6 @@ impl LocalExec {
         &self,
         object_id: &ObjectID,
     ) -> Result<Object, LocalExecError> {
-        println!("Downloading {}", object_id);
-
         let options = SuiObjectDataOptions::bcs_lossless();
         let object = self
             .client
@@ -230,6 +223,7 @@ impl LocalExec {
             sui_json_rpc_types::SuiTransactionBlockData::V1(tx) => tx.sender,
         };
         if sender == SuiAddress::ZERO {
+            println!("Genesis TX {tx_digest} from sender {sender} exiting");
             // Genesis.
             return Ok(vec![]);
         }
@@ -262,20 +256,11 @@ impl LocalExec {
             .map(|s| self.download_object(&s.object_id, s.version))
             .collect::<Result<Vec<_>, _>>()?;
 
-        println!("Updated {:?}", effects.mutated());
-        println!("Created {:?}", effects.created());
-        println!("Wrapped {:?}", effects.wrapped());
-        println!("Unwrapped {:?}", effects.unwrapped());
-        println!("Unwrapped deleted {:?}", unwrapped_then_deleted);
-
         pre_exec_objects.append(&mut wrapped_objects);
         pre_exec_objects.append(&mut unwrapped_then_deleted);
 
         let mutated_at_versions: Vec<(ObjectID, SequenceNumber)> =
             effects.modified_at_versions().clone();
-        for m in mutated_at_versions {
-            println!("mod: {:?}", m);
-        }
 
         let shared_objs: Vec<_> = effects
             .shared_objects
@@ -352,6 +337,21 @@ impl LocalExec {
                 .read_api()
                 .get_dynamic_fields_loaded_objects(*tx_digest)
         })?;
+        loaded_df_child_objs
+            .loaded_child_objects
+            .iter()
+            .for_each(|obj| {
+                let obj = self
+                    .download_object(&obj.object_id(), obj.sequence_number())
+                    .unwrap_or_else(|_| {
+                        panic!(
+                            "Must be able to get version object {} at version {}",
+                            obj.object_id(),
+                            obj.sequence_number()
+                        )
+                    });
+                self.store.insert(obj.id(), obj);
+            });
 
         let temporary_store = self.to_temporary_store(
             tx_digest,
@@ -364,8 +364,8 @@ impl LocalExec {
             .map(|obj| obj.compute_object_reference())
             .collect();
 
-        let gas_used_actual = effects.gas_used;
-        let tx_deps: Vec<_> = effects.dependencies.into_iter().collect();
+        let gas_used_actual = effects.clone().gas_used;
+        let tx_deps: Vec<_> = effects.clone().dependencies.into_iter().collect();
         let transaction_dependencies: BTreeSet<_> = tx_deps.clone().into_iter().collect();
 
         // All prep done
@@ -387,16 +387,18 @@ impl LocalExec {
             &protocol_config,
             true,
         );
-        println!("STATUS {:?}", res.2);
-        println!("Updated {:?}", res.1.mutated());
-        println!("Created {:?}", res.1.created());
-        println!("Wrapped {:?}", res.1.wrapped());
-        println!("Unwrapped {:?}", res.1.unwrapped());
-        println!("Unwrapped deleted {:?}", res.1.unwrapped_then_deleted());
 
-        println!("actual gas used: {}", gas_used_actual);
-        println!("simula gas used: {}", res.1.gas_cost_summary());
+        let new_effects: SuiTransactionBlockEffects = res.1.clone().try_into().unwrap();
+        let new_effects = match new_effects {
+            SuiTransactionBlockEffects::V1(e) => e,
+        };
 
+        if effects != new_effects {
+            println!("EFFECTS DIFFER");
+            println!("OLD {:?}", effects);
+            println!("NEW {:?}", new_effects);
+            panic!("Effects differ");
+        }
         assert!(
             gas_used_actual == res.1.gas_cost_summary().clone(),
             "Actual gas used differs from local exec gas used"
@@ -408,7 +410,6 @@ impl LocalExec {
     }
 
     pub fn get_or_download_object(&self, obj_id: &ObjectID) -> Result<Object, LocalExecError> {
-        println!("Getting object {:?}", obj_id);
         if let Some(obj) = self.package_cache.borrow().get(obj_id) {
             return Ok(obj.clone());
         };
@@ -441,21 +442,13 @@ impl LocalExec {
         // Get the latest child object
 
         while child_version > parent.1 {
-            println!("child version start {} pv {}", child_version, parent.1);
-
             let child_obj = self.download_latest_object_impl(&child).await?;
             // This is the tx which last created or mutated this obj
             let prev_tx = child_obj.previous_transaction;
 
             if prev_tx == TransactionDigest::genesis() || prev_tx == self.curr_tx.unwrap() {
-                println!(
-                    "No previous transaction found for object {:?}",
-                    child_obj.compute_object_reference()
-                );
                 break;
             }
-
-            println!("Previous tx {}", prev_tx);
 
             // Check the version the object was mutated at
             let tx_fetch_opts = SuiTransactionBlockResponseOptions::full_content();
@@ -473,10 +466,9 @@ impl LocalExec {
             let v = mutated_at_versions
                 .iter()
                 .find(|(id, _)| *id == child_id)
-                .expect(&format!("Failed to find mutated at for {}", child));
+                .unwrap_or_else(|| panic!("Failed to find mutated at for {}", child));
 
             child_version = v.1;
-            println!("child version end {}", child_version);
         }
 
         Ok(child_version)
@@ -503,17 +495,14 @@ impl LocalExec {
             .map_err(|w| LocalExecError::GeneralError {
                 err: format!("Error querying system events: {:?}", w),
             })?;
-        println!("Epoch {}", epoch_id);
 
         for r in resp.data {
-            println!("{}", r.parsed_json);
             match r.parsed_json {
                 serde_json::Value::Object(w) => {
                     let ep_id = u64::from_str(&w["epoch"].to_string().replace('\"', "")).unwrap();
                     let prot_ver =
                         u64::from_str(&w["protocol_version"].to_string().replace('\"', ""))
                             .unwrap();
-                    println!("{} {}", ep_id, prot_ver);
                     if ep_id == epoch_id {
                         return Ok(ProtocolConfig::get_for_version(prot_ver.into()));
                     }
@@ -530,8 +519,6 @@ impl LocalExec {
 
 impl BackingPackageStore for LocalExec {
     fn get_package_object(&self, package_id: &ObjectID) -> SuiResult<Option<Object>> {
-        println!("get_package_object: {}", package_id);
-
         self.get_or_download_object(package_id)
             .map(Some)
             .map_err(|e| e.into())
@@ -540,31 +527,11 @@ impl BackingPackageStore for LocalExec {
 
 impl ChildObjectResolver for LocalExec {
     fn read_child_object(&self, parent: &ObjectID, child: &ObjectID) -> SuiResult<Option<Object>> {
-        println!("read_child_object: {} {}", parent, child);
-
-        if self.store.get(parent).is_none() {
-            println!("Could not find parent: {} {}", parent, child);
-            return Ok(None);
+        let child_object = match self.get_object(child)? {
+            None => return Ok(None),
+            Some(o) => o,
         };
 
-        let parent_obj = self.store.get(parent).unwrap();
-        let parent_ref = parent_obj.compute_object_reference();
-
-        println!("parent ref: {:?}", parent_ref);
-
-        let child_version = block_on({
-            self.get_nearest_less_child_version((parent_ref.0, parent_ref.1), *child)
-        })?;
-
-        if child_version > parent_ref.1 {
-            // This means the child was created later
-            return Ok(None);
-        }
-
-        let child_object = match self.download_object(child, parent_ref.1) {
-            Err(_) => return Ok(None),
-            Ok(obj) => obj,
-        };
         let parent = *parent;
         if child_object.owner != Owner::ObjectOwner(parent.into()) {
             return Err(SuiError::InvalidChildObjectAccess {
@@ -575,12 +542,47 @@ impl ChildObjectResolver for LocalExec {
         }
         Ok(Some(child_object))
     }
+
+    // fn read_child_object(&self, parent: &ObjectID, child: &ObjectID) -> SuiResult<Option<Object>> {
+    //     println!("read_child_object: {} {}", parent, child);
+
+    //     if self.store.get(parent).is_none() {
+    //         println!("Could not find parent: {} {}", parent, child);
+    //         return Ok(None);
+    //     };
+
+    //     let parent_obj = self.store.get(parent).unwrap();
+    //     let parent_ref = parent_obj.compute_object_reference();
+
+    //     println!("parent ref: {:?}", parent_ref);
+
+    //     let child_version = block_on({
+    //         self.get_nearest_less_child_version((parent_ref.0, parent_ref.1), *child)
+    //     })?;
+
+    //     if child_version > parent_ref.1 {
+    //         // This means the child was created later
+    //         return Ok(None);
+    //     }
+
+    //     let child_object = match self.download_object(child, parent_ref.1) {
+    //         Err(_) => return Ok(None),
+    //         Ok(obj) => obj,
+    //     };
+    //     let parent = *parent;
+    //     if child_object.owner != Owner::ObjectOwner(parent.into()) {
+    //         return Err(SuiError::InvalidChildObjectAccess {
+    //             object: *child,
+    //             given_parent: parent,
+    //             actual_owner: child_object.owner,
+    //         });
+    //     }
+    //     Ok(Some(child_object))
+    // }
 }
 
 impl ParentSync for LocalExec {
     fn get_latest_parent_entry_ref(&self, object_id: ObjectID) -> SuiResult<Option<ObjectRef>> {
-        println!("get_latest_parent_entry_ref: {}", object_id);
-
         // Need to improve this
 
         match self.get_or_download_object(&object_id) {
@@ -598,7 +600,6 @@ impl ResourceResolver for LocalExec {
         address: &AccountAddress,
         typ: &StructTag,
     ) -> Result<Option<Vec<u8>>, Self::Error> {
-        println!("get_resource: {}", address);
         let object: Object = self.get_or_download_object(&ObjectID::from(*address))?;
 
         match &object.data {
@@ -644,8 +645,6 @@ impl ModuleResolver for &mut LocalExec {
 
 impl ObjectStore for LocalExec {
     fn get_object(&self, object_id: &ObjectID) -> Result<Option<Object>, SuiError> {
-        println!("get_object: {}", object_id);
-
         Ok(self.get_or_download_object(object_id).ok())
     }
 
@@ -654,8 +653,6 @@ impl ObjectStore for LocalExec {
         object_id: &ObjectID,
         version: VersionNumber,
     ) -> Result<Option<Object>, SuiError> {
-        println!("get_object_by_key: {}", object_id);
-
         Ok(self.get_or_download_object(object_id).ok().and_then(|obj| {
             if obj.version() == version {
                 Some(obj)

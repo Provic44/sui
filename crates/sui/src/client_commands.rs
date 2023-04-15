@@ -1,7 +1,9 @@
 // Copyright (c) Mysten Labs, Inc.
 // SPDX-License-Identifier: Apache-2.0
 
+use crate::local_exec::LocalExec;
 use core::fmt;
+use std::collections::VecDeque;
 use std::sync::Arc;
 use std::{
     collections::BTreeSet,
@@ -9,8 +11,6 @@ use std::{
     path::{Path, PathBuf},
     time::Instant,
 };
-use std::collections::VecDeque;
-use crate::local_exec::LocalExec;
 use sui_config::node::ExpensiveSafetyCheckConfig;
 
 use crate::config::{Config, PersistedConfig, SuiClientConfig, SuiEnv};
